@@ -4,8 +4,9 @@ const Book = require("../models/book");
 const Author = require("../models/author");
 const multer = require("multer");
 const path = require("path");
+const fs = require("fs");
 const uploadPath = path.join("public", Book.coverImageBasePath);
-const imageMimeTypes = ["images/jpeg", "images/png", "images/gif"];
+const imageMimeTypes = ["image/jpeg", "image/png", "image/gif"];
 const upload = multer({
   dest: uploadPath,
   fileFilter: (req, file, callback) => {
@@ -15,7 +16,16 @@ const upload = multer({
 
 // All Books routes
 router.get("/", async (req, res) => {
-  res.send("all books");
+  let query = Book.find();
+  if (req.query.title != null && req.query.title != "") {
+    query = query.regex("title", new RegExp(req.query.title, "i"));
+  }
+  try {
+    const books = await query.exec();
+    res.render("books/index", { books: books, searchOptions: req.query });
+  } catch (error) {
+    res.redirect("/");
+  }
 });
 
 // new Book route
@@ -26,6 +36,7 @@ router.get("/new", async (req, res) => {
 //create Book route
 router.post("/", upload.single("cover"), async (req, res) => {
   const fileName = req.file != null ? req.file.filename : null;
+  console.log("filename :", fileName);
   const book = new Book({
     title: req.body.title,
     author: req.body.author,
@@ -39,10 +50,21 @@ router.post("/", upload.single("cover"), async (req, res) => {
     const newBook = await book.save();
     // res.redirect(`books/${newBook.id}`)
     res.redirect("books");
-  } catch {
+  } catch (err) {
+    if (book.coverImageName != null) {
+      removeBookCover(book.coverImageName);
+    }
+    console.log("coverImageName is: ", book.coverImageName);
+    console.log("error here is: ", err);
     renderNewPage(res, book, true);
   }
 });
+
+function removeBookCover(fileName) {
+  fs.unlink(path.join(uploadPath, fileName), (err) => {
+    if (err) console.error(err);
+  });
+}
 
 async function renderNewPage(res, book, hasError = false) {
   try {
@@ -54,6 +76,7 @@ async function renderNewPage(res, book, hasError = false) {
     if (hasError) params.errorMessage = "Error Creating Book";
     res.render("books/new", params);
   } catch (error) {
+    console.log("error here is:", error);
     res.redirect("/books");
   }
 }
